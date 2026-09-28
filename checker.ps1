@@ -8,7 +8,7 @@ param(
 
 # ---------- Настройки ----------
 # SHA256-хеш пароля. Получить: [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes("твой_пароль"))).Replace("-","").ToLower()
-$PasswordHash = "PUT_SHA256_HASH_HERE"
+$PasswordHash = "J343lAOk944"
 
 $Keywords = @(
     "killaura","aimassist","autoclicker","triggerbot","reach","velocity","scaffold",
