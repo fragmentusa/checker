@@ -18,8 +18,8 @@ $Keywords = @(
 # ---------------------------------
 
 # Ссылки на zip-архивы инструментов (положи их, например, в GitHub Releases своего репозитория)
-$EverythingZipUrl  = ""   # Everything 1.5a (zip, портативная версия)
-$JournalTraceUrl   = ""   # JournalTrace (zip или прямая ссылка на exe)
+$EverythingZipUrl  = "https://www.voidtools.com/Everything-1.5.0.1409a.x64.zip"   # Everything 1.5a x64 portable
+$JournalTraceUrl   = "https://github.com/ponei/JournalTrace/releases/latest/download/JournalTrace.exe"   # JournalTrace (ponei)
 $ToolsDir = Join-Path $env:TEMP "checker_tools"
 
 $ErrorActionPreference = "SilentlyContinue"
