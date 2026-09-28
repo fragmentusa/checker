@@ -17,6 +17,11 @@ $Keywords = @(
 )
 # ---------------------------------
 
+# Ссылки на zip-архивы инструментов (положи их, например, в GitHub Releases своего репозитория)
+$EverythingZipUrl  = ""   # Everything 1.5a (zip, портативная версия)
+$JournalTraceUrl   = ""   # JournalTrace (zip или прямая ссылка на exe)
+$ToolsDir = Join-Path $env:TEMP "checker_tools"
+
 $ErrorActionPreference = "SilentlyContinue"
 $report = New-Object System.Collections.Generic.List[string]
 function Log($t) { $report.Add($t); Write-Host $t }
@@ -25,18 +30,19 @@ function Log($t) { $report.Add($t); Write-Host $t }
 $hash = [BitConverter]::ToString(
     [Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($Password))
 ).Replace("-", "").ToLower()
-if ($hash -ne $PasswordHash) { Write-Host "Неверный пароль." -ForegroundColor Red; exit 1 }
+if ($hash -ne $PasswordHash) { Write-Host "Неверный пароль." -ForegroundColor Red; return }
 
 # 2. Проверка прав администратора
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
            ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) { Write-Host "Запусти PowerShell от имени администратора." -ForegroundColor Red; exit 1 }
+if (-not $isAdmin) { Write-Host "Запусти PowerShell от имени администратора." -ForegroundColor Red; return }
 
 # 3. Согласие пользователя (прозрачность)
 Write-Host "`nПроверка #$Code. Скрипт просматривает: папку .minecraft, Prefetch, Recent, запущенные процессы." -ForegroundColor Cyan
 Write-Host "Файлы не изменяются и не удаляются. Отчёт сохраняется на рабочий стол." -ForegroundColor Cyan
 if ($WebhookUrl) { Write-Host "Отчёт будет отправлен модератору." -ForegroundColor Yellow }
-if ((Read-Host "Продолжить? (y/n)") -ne "y") { exit 0 }
+Write-Host "Запуск через 5 секунд. Закрой окно, чтобы отменить." -ForegroundColor Yellow
+Start-Sleep -Seconds 5
 
 Log "=== ОТЧЁТ | Код: $Code | Игрок: $env:USERNAME | ПК: $env:COMPUTERNAME | $(Get-Date) ==="
 
@@ -99,6 +105,41 @@ foreach ($dir in @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop")) {
     }
 }
 
+# 9. Инжекты: подозрительные модули в процессах Java
+Log "`n[6] Модули в javaw/java (неподписанные DLL вне системных папок)"
+$skipName = '^(lwjgl|jna|glfw|OpenAL|jemalloc|zstd|opus|tinyfd|freetype|sqlite)'
+foreach ($p in (Get-Process javaw, java -ErrorAction SilentlyContinue)) {
+    try {
+        foreach ($m in $p.Modules) {
+            $f = $m.FileName
+            if ($f -match '^C:\\Windows\\') { continue }
+            if ($m.ModuleName -match $skipName) { continue }
+            $kw = Match-Keyword $f
+            if ($kw) { Log "  ВНИМАНИЕ (имя: $kw): $f [PID $($p.Id)]"; continue }
+            if ($f -match '\.(dll)$') {
+                $sig = Get-AuthenticodeSignature $f
+                if ($sig.Status -ne "Valid" -and $f -notmatch '\\(Java|jdk|jre|runtime)[^\\]*\\') {
+                    Log "  ВНИМАНИЕ (без подписи): $f [PID $($p.Id)]"
+                }
+            }
+        }
+    } catch { Log "  Не удалось прочитать модули PID $($p.Id)" }
+}
+
+# 10. Полное сканирование дисков по именам файлов
+Log "`n[7] Все диски: файлы с подозрительными именами"
+$exts = @("*.jar", "*.exe", "*.dll", "*.zip", "*.rar", "*.7z", "*.bat", "*.ps1", "*.cfg", "*.json")
+$skipPath = '\\(Windows|Program Files|Program Files \(x86\)|ProgramData\\Microsoft|\$Recycle\.Bin|System Volume Information)\\'
+foreach ($drive in (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' })) {
+    Write-Host "  Сканирую $($drive.Root) ..." -ForegroundColor DarkGray
+    Get-ChildItem $drive.Root -Recurse -Force -File -Include $exts -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch $skipPath } |
+        ForEach-Object {
+            $m = Match-Keyword $_.Name
+            if ($m) { Log "  ($m) $($_.FullName)" }
+        }
+}
+
 Log "`n=== Проверка завершена ==="
 
 # Сохранение отчёта
@@ -136,3 +177,27 @@ if ($WebhookUrl) {
     if ($LASTEXITCODE -eq 0) { Write-Host "Отчёт отправлен модератору." -ForegroundColor Green }
     else { Write-Host "Не удалось отправить отчёт. Покажи файл вручную: $path" -ForegroundColor Yellow }
 }
+
+# ---------- Запуск Everything 1.5a и JournalTrace ----------
+function Get-Tool($url, $pattern) {
+    $exe = Get-ChildItem $ToolsDir -Recurse -Filter $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($exe -or -not $url) { return $exe }
+    New-Item -ItemType Directory -Path $ToolsDir -Force | Out-Null
+    $file = Join-Path $ToolsDir ([IO.Path]::GetFileName(([Uri]$url).AbsolutePath))
+    Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+    if ($file -like "*.zip") { Expand-Archive $file -DestinationPath $ToolsDir -Force }
+    return (Get-ChildItem $ToolsDir -Recurse -Filter $pattern | Select-Object -First 1)
+}
+
+$ev = Get-Tool $EverythingZipUrl "Everything*.exe"
+if ($ev) {
+    $query = ($Keywords -join "|")    # в Everything "|" означает ИЛИ
+    Start-Process $ev.FullName -ArgumentList @("-search", $query)
+    Write-Host "Everything запущен, строки поиска введены." -ForegroundColor Green
+} else { Write-Host "Everything не найден: заполни `$EverythingZipUrl в скрипте." -ForegroundColor Yellow }
+
+$jt = Get-Tool $JournalTraceUrl "JournalTrace*.exe"
+if ($jt) {
+    Start-Process $jt.FullName
+    Write-Host "JournalTrace запущен." -ForegroundColor Green
+} else { Write-Host "JournalTrace не найден: заполни `$JournalTraceUrl в скрипте." -ForegroundColor Yellow }
