@@ -48,64 +48,169 @@ if ($WebhookUrl) { Write-Host "Отчёт будет отправлен моде
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$Global:AkilyaForm = New-Object System.Windows.Forms.Form
-$Global:AkilyaForm.Text = "AKILYA"
-$Global:AkilyaForm.Size = New-Object System.Drawing.Size(480, 220)
-$Global:AkilyaForm.StartPosition = "CenterScreen"
-$Global:AkilyaForm.FormBorderStyle = "FixedDialog"
-$Global:AkilyaForm.MaximizeBox = $false
-$Global:AkilyaForm.MinimizeBox = $false
-$Global:AkilyaForm.TopMost = $true
-$Global:AkilyaForm.BackColor = [System.Drawing.Color]::FromArgb(24, 26, 32)
+# --- Кастомный прогресс-бар без системной темы (рисуем сами) ---
+Add-Type @"
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 
+public class FlatProgress : Control {
+    private int _value = 0;
+    private int _max   = 100;
+    public Color BarColor  = Color.FromArgb(80, 190, 255);
+    public Color BackFill  = Color.FromArgb(40, 42, 50);
+    public int   Value { get { return _value; }
+        set { _value = Math.Max(0, Math.Min(_max, value)); Invalidate(); } }
+    public int   Maximum { get { return _max; }
+        set { _max = value; Invalidate(); } }
+    protected override void OnPaint(PaintEventArgs e) {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        int r = Height / 2;
+        // фон
+        using (var b = new SolidBrush(BackFill)) g.FillRoundedRect(b, 0, 0, Width, Height, r);
+        // заполнение
+        if (_value > 0) {
+            int w = (int)((double)_value / _max * Width);
+            w = Math.Max(w, Height);
+            var rect = new Rectangle(0, 0, w, Height);
+            using (var gb = new LinearGradientBrush(rect, Color.FromArgb(60,160,255), Color.FromArgb(110,220,255), 0f))
+                g.FillRoundedRect(gb, 0, 0, w, Height, r);
+        }
+    }
+}
+
+public static class GfxExt {
+    public static void FillRoundedRect(this Graphics g, Brush b, int x, int y, int w, int h, int r) {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(x, y, 2*r, 2*r, 180, 90);
+        path.AddArc(x+w-2*r, y, 2*r, 2*r, 270, 90);
+        path.AddArc(x+w-2*r, y+h-2*r, 2*r, 2*r, 0, 90);
+        path.AddArc(x, y+h-2*r, 2*r, 2*r, 90, 90);
+        path.CloseAllFigures();
+        g.FillPath(b, path);
+    }
+}
+"@ -ReferencedAssemblies "System.Windows.Forms","System.Drawing"
+
+$Global:AkilyaForm = New-Object System.Windows.Forms.Form
+$Global:AkilyaForm.Text            = "AKILYA"
+$Global:AkilyaForm.Size            = New-Object System.Drawing.Size(460, 310)
+$Global:AkilyaForm.StartPosition   = "CenterScreen"
+$Global:AkilyaForm.FormBorderStyle = "None"
+$Global:AkilyaForm.TopMost         = $true
+$Global:AkilyaForm.BackColor       = [System.Drawing.Color]::FromArgb(18, 18, 24)
+
+# Перетаскивание окна мышью (без рамки)
+$drag = $false; $dragPt = [System.Drawing.Point]::Empty
+$Global:AkilyaForm.Add_MouseDown({ param($s,$e); if($e.Button -eq 'Left'){$script:drag=$true;$script:dragPt=$e.Location} })
+$Global:AkilyaForm.Add_MouseMove({ param($s,$e); if($script:drag){$Global:AkilyaForm.Left+=$e.X-$script:dragPt.X;$Global:AkilyaForm.Top+=$e.Y-$script:dragPt.Y} })
+$Global:AkilyaForm.Add_MouseUp({   $script:drag=$false })
+
+# Тонкая рамка
+$Global:AkilyaForm.Add_Paint({
+    param($s,$e)
+    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50,52,65), 1)
+    $e.Graphics.DrawRectangle($pen, 0, 0, $s.Width-1, $s.Height-1)
+    $pen.Dispose()
+})
+
+# Кнопка X
+$btnClose = New-Object System.Windows.Forms.Button
+$btnClose.Text      = "×"
+$btnClose.Size      = New-Object System.Drawing.Size(28, 28)
+$btnClose.Location  = New-Object System.Drawing.Point(424, 6)
+$btnClose.FlatStyle = "Flat"
+$btnClose.FlatAppearance.BorderSize = 0
+$btnClose.Font      = New-Object System.Drawing.Font("Segoe UI", 13)
+$btnClose.ForeColor = [System.Drawing.Color]::FromArgb(120,120,140)
+$btnClose.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 24)
+$btnClose.Cursor    = "Hand"
+$btnClose.Add_Click({ $Global:AkilyaForm.Close() })
+$Global:AkilyaForm.Controls.Add($btnClose)
+
+# Иконка-кружок
+$circle = New-Object System.Windows.Forms.Panel
+$circle.Size     = New-Object System.Drawing.Size(70, 70)
+$circle.Location = New-Object System.Drawing.Point(195, 28)
+$circle.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 24)
+$circle.Add_Paint({
+    param($s,$e)
+    $g = $e.Graphics; $g.SmoothingMode = "AntiAlias"
+    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80,190,255), 2)
+    $g.DrawEllipse($pen, 2, 2, 64, 64)
+    $pen.Dispose()
+    $inner = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(40,100,180), 1)
+    $g.DrawEllipse($inner, 8, 8, 52, 52)
+    $inner.Dispose()
+    $sf = New-Object System.Drawing.StringFormat
+    $sf.Alignment = "Center"; $sf.LineAlignment = "Center"
+    $f = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $b = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(80,190,255))
+    $g.DrawString("A", $f, $b, (New-Object System.Drawing.RectangleF(0,0,70,70)), $sf)
+    $f.Dispose(); $b.Dispose(); $sf.Dispose()
+})
+$Global:AkilyaForm.Controls.Add($circle)
+
+# Заголовок
 $titleLabel = New-Object System.Windows.Forms.Label
-$titleLabel.Text = "AKILYA"
-$titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 22, [System.Drawing.FontStyle]::Bold)
-$titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(80, 200, 255)
-$titleLabel.AutoSize = $true
-$titleLabel.Location = New-Object System.Drawing.Point(20, 15)
+$titleLabel.Text      = "AKILYA"
+$titleLabel.Font      = New-Object System.Drawing.Font("Segoe UI", 20, [System.Drawing.FontStyle]::Bold)
+$titleLabel.ForeColor = [System.Drawing.Color]::White
+$titleLabel.AutoSize  = $false
+$titleLabel.TextAlign = "MiddleCenter"
+$titleLabel.Size      = New-Object System.Drawing.Size(460, 34)
+$titleLabel.Location  = New-Object System.Drawing.Point(0, 108)
 $Global:AkilyaForm.Controls.Add($titleLabel)
 
+# Подзаголовок
 $subLabel = New-Object System.Windows.Forms.Label
-$subLabel.Text = "Screenshare Checker"
-$subLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-$subLabel.ForeColor = [System.Drawing.Color]::Gray
-$subLabel.AutoSize = $true
-$subLabel.Location = New-Object System.Drawing.Point(23, 55)
+$subLabel.Text      = "Screenshare Checker"
+$subLabel.Font      = New-Object System.Drawing.Font("Segoe UI", 9)
+$subLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 120)
+$subLabel.AutoSize  = $false
+$subLabel.TextAlign = "MiddleCenter"
+$subLabel.Size      = New-Object System.Drawing.Size(460, 20)
+$subLabel.Location  = New-Object System.Drawing.Point(0, 144)
 $Global:AkilyaForm.Controls.Add($subLabel)
 
+# Статус
 $Global:AkilyaStatus = New-Object System.Windows.Forms.Label
-$Global:AkilyaStatus.Text = "Инициализация..."
-$Global:AkilyaStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$Global:AkilyaStatus.ForeColor = [System.Drawing.Color]::White
-$Global:AkilyaStatus.AutoSize = $false
-$Global:AkilyaStatus.Size = New-Object System.Drawing.Size(430, 22)
-$Global:AkilyaStatus.Location = New-Object System.Drawing.Point(23, 95)
+$Global:AkilyaStatus.Text      = "Инициализация..."
+$Global:AkilyaStatus.Font      = New-Object System.Drawing.Font("Segoe UI", 9)
+$Global:AkilyaStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 180)
+$Global:AkilyaStatus.AutoSize  = $false
+$Global:AkilyaStatus.TextAlign = "MiddleCenter"
+$Global:AkilyaStatus.Size      = New-Object System.Drawing.Size(460, 20)
+$Global:AkilyaStatus.Location  = New-Object System.Drawing.Point(0, 190)
 $Global:AkilyaForm.Controls.Add($Global:AkilyaStatus)
 
-$Global:AkilyaBar = New-Object System.Windows.Forms.ProgressBar
-$Global:AkilyaBar.Location = New-Object System.Drawing.Point(23, 125)
-$Global:AkilyaBar.Size = New-Object System.Drawing.Size(430, 22)
-$Global:AkilyaBar.Minimum = 0
-$Global:AkilyaBar.Maximum = 100
+# Кастомный прогресс-бар
+$Global:AkilyaBar          = New-Object FlatProgress
+$Global:AkilyaBar.Location = New-Object System.Drawing.Point(40, 218)
+$Global:AkilyaBar.Size     = New-Object System.Drawing.Size(380, 8)
+$Global:AkilyaBar.Maximum  = 100
+$Global:AkilyaBar.Value    = 0
 $Global:AkilyaForm.Controls.Add($Global:AkilyaBar)
 
+# Нижняя подпись
 $footLabel = New-Object System.Windows.Forms.Label
-$footLabel.Text = "Код проверки: $Code   |   Игрок: $env:USERNAME"
-$footLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-$footLabel.ForeColor = [System.Drawing.Color]::DarkGray
-$footLabel.AutoSize = $true
-$footLabel.Location = New-Object System.Drawing.Point(23, 160)
+$footLabel.Text      = "Код: $Code  |  $env:USERNAME"
+$footLabel.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
+$footLabel.ForeColor = [System.Drawing.Color]::FromArgb(60, 62, 75)
+$footLabel.AutoSize  = $false
+$footLabel.TextAlign = "MiddleCenter"
+$footLabel.Size      = New-Object System.Drawing.Size(460, 18)
+$footLabel.Location  = New-Object System.Drawing.Point(0, 274)
 $Global:AkilyaForm.Controls.Add($footLabel)
 
 $Global:AkilyaForm.Show()
 $Global:AkilyaForm.Refresh()
 
-# Show-Progress реально обновляет окно текущим этапом и процентом — окно всегда отражает,
-# что скрипт делает прямо сейчас, а не декоративную анимацию поверх молчащей консоли.
 function Show-Progress($percent, $label) {
-    $Global:AkilyaStatus.Text = $label
-    $Global:AkilyaBar.Value = [Math]::Min(100, [Math]::Max(0, $percent))
+    $Global:AkilyaStatus.Text  = $label
+    $Global:AkilyaBar.Value    = [Math]::Min(100, [Math]::Max(0, $percent))
     $Global:AkilyaForm.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
 }
