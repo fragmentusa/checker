@@ -45,56 +45,80 @@ if (-not $isAdmin) { Write-Host "Запусти PowerShell от имени ад�
 Write-Host "`nПроверка #$Code. Скрипт просматривает: папку .minecraft, Prefetch, Recent, запущенные процессы." -ForegroundColor Cyan
 Write-Host "Файлы не изменяются и не удаляются. Отчёт сохраняется на рабочий стол." -ForegroundColor Cyan
 if ($WebhookUrl) { Write-Host "Отчёт будет отправлен модератору." -ForegroundColor Yellow }
-function Show-Banner {
-    Clear-Host
-    try { $Host.UI.RawUI.WindowTitle = "AKILYA | Screenshare Checker" } catch {}
-    $w = 62
-    Write-Host ""
-    Write-Host ("=" * $w) -ForegroundColor DarkCyan
-    Write-Host ""
-    Write-Host "   █████╗ ██╗  ██╗██╗██╗     ██╗   ██╗ █████╗ " -ForegroundColor Cyan
-    Write-Host "  ██╔══██╗██║ ██╔╝██║██║     ╚██╗ ██╔╝██╔══██╗" -ForegroundColor Cyan
-    Write-Host "  ███████║█████╔╝ ██║██║      ╚████╔╝ ███████║" -ForegroundColor White
-    Write-Host "  ██╔══██║██╔═██╗ ██║██║       ╚██╔╝  ██╔══██║" -ForegroundColor White
-    Write-Host "  ██║  ██║██║  ██╗██║███████╗   ██║   ██║  ██║" -ForegroundColor Cyan
-    Write-Host "  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host ("            SCREENSHARE CHECKER  •  v1.0") -ForegroundColor Gray
-    Write-Host ("=" * $w) -ForegroundColor DarkCyan
-    Write-Host ""
-}
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-function Show-Spinner($seconds, $label) {
-    $frames = @("|","/","-","\")
-    $dotsMax = 3
-    $end = (Get-Date).AddSeconds($seconds)
-    $i = 0
-    while ((Get-Date) -lt $end) {
-        $dots = "." * (($i % $dotsMax) + 1)
-        $pad  = " " * ($dotsMax - (($i % $dotsMax) + 1))
-        Write-Host ("`r  [{0}] {1}{2}{3}" -f $frames[$i % 4], $label, $dots, $pad) -NoNewline -ForegroundColor Cyan
-        Start-Sleep -Milliseconds 150
-        $i++
-    }
-    Write-Host ("`r" + (" " * 70) + "`r") -NoNewline
-}
+$Global:AkilyaForm = New-Object System.Windows.Forms.Form
+$Global:AkilyaForm.Text = "AKILYA"
+$Global:AkilyaForm.Size = New-Object System.Drawing.Size(480, 220)
+$Global:AkilyaForm.StartPosition = "CenterScreen"
+$Global:AkilyaForm.FormBorderStyle = "FixedDialog"
+$Global:AkilyaForm.MaximizeBox = $false
+$Global:AkilyaForm.MinimizeBox = $false
+$Global:AkilyaForm.TopMost = $true
+$Global:AkilyaForm.BackColor = [System.Drawing.Color]::FromArgb(24, 26, 32)
 
+$titleLabel = New-Object System.Windows.Forms.Label
+$titleLabel.Text = "AKILYA"
+$titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 22, [System.Drawing.FontStyle]::Bold)
+$titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(80, 200, 255)
+$titleLabel.AutoSize = $true
+$titleLabel.Location = New-Object System.Drawing.Point(20, 15)
+$Global:AkilyaForm.Controls.Add($titleLabel)
+
+$subLabel = New-Object System.Windows.Forms.Label
+$subLabel.Text = "Screenshare Checker"
+$subLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$subLabel.ForeColor = [System.Drawing.Color]::Gray
+$subLabel.AutoSize = $true
+$subLabel.Location = New-Object System.Drawing.Point(23, 55)
+$Global:AkilyaForm.Controls.Add($subLabel)
+
+$Global:AkilyaStatus = New-Object System.Windows.Forms.Label
+$Global:AkilyaStatus.Text = "Инициализация..."
+$Global:AkilyaStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$Global:AkilyaStatus.ForeColor = [System.Drawing.Color]::White
+$Global:AkilyaStatus.AutoSize = $false
+$Global:AkilyaStatus.Size = New-Object System.Drawing.Size(430, 22)
+$Global:AkilyaStatus.Location = New-Object System.Drawing.Point(23, 95)
+$Global:AkilyaForm.Controls.Add($Global:AkilyaStatus)
+
+$Global:AkilyaBar = New-Object System.Windows.Forms.ProgressBar
+$Global:AkilyaBar.Location = New-Object System.Drawing.Point(23, 125)
+$Global:AkilyaBar.Size = New-Object System.Drawing.Size(430, 22)
+$Global:AkilyaBar.Minimum = 0
+$Global:AkilyaBar.Maximum = 100
+$Global:AkilyaForm.Controls.Add($Global:AkilyaBar)
+
+$footLabel = New-Object System.Windows.Forms.Label
+$footLabel.Text = "Код проверки: $Code   |   Игрок: $env:USERNAME"
+$footLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+$footLabel.ForeColor = [System.Drawing.Color]::DarkGray
+$footLabel.AutoSize = $true
+$footLabel.Location = New-Object System.Drawing.Point(23, 160)
+$Global:AkilyaForm.Controls.Add($footLabel)
+
+$Global:AkilyaForm.Show()
+$Global:AkilyaForm.Refresh()
+
+# Show-Progress реально обновляет окно текущим этапом и процентом — окно всегда отражает,
+# что скрипт делает прямо сейчас, а не декоративную анимацию поверх молчащей консоли.
 function Show-Progress($percent, $label) {
-    $width = 40
-    $filled = [int]($width * $percent / 100)
-    $bar = ("#" * $filled) + ("." * ($width - $filled))
-    $color = if ($percent -lt 100) { "Cyan" } else { "Green" }
-    Write-Host ("`r  [{0}] {1,3}%  {2}" -f $bar, $percent, $label.PadRight(30)) -NoNewline -ForegroundColor $color
-    if ($percent -eq 100) { Write-Host "" }
+    $Global:AkilyaStatus.Text = $label
+    $Global:AkilyaBar.Value = [Math]::Min(100, [Math]::Max(0, $percent))
+    $Global:AkilyaForm.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
 }
 
-Show-Banner
+Show-Progress 2 "Инициализация проверки..."
+Write-Host "  Код проверки : $Code" -ForegroundColor White
 Write-Host "  Код проверки : $Code" -ForegroundColor White
 Write-Host "  Игрок        : $env:USERNAME" -ForegroundColor White
 Write-Host "  Внимание: проверяются папка .minecraft, Prefetch, Recent," -ForegroundColor Yellow
 Write-Host "  запущенные процессы и все диски. Отчёт уйдёт модератору." -ForegroundColor Yellow
 Write-Host ""
-Show-Spinner 5 "Инициализация проверки"
+Show-Progress 5 "Подготовка к сканированию..."
+Start-Sleep -Seconds 2
 Write-Host ""
 
 Log "=== ОТЧЁТ | Код: $Code | Игрок: $env:USERNAME | ПК: $env:COMPUTERNAME | $(Get-Date) ==="
@@ -200,7 +224,7 @@ foreach ($drive in (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root 
         }
 }
 
-Show-Progress 100 "Готово"
+Show-Progress 95 "Формирование отчёта..."
 Write-Host ""
 Log "`n=== Проверка завершена ==="
 
@@ -250,6 +274,20 @@ if ($WebhookUrl) {
     if ($sent) { Write-Host "Отчёт отправлен модератору." -ForegroundColor Green }
     else { Write-Host "Не удалось отправить отчёт. Покажи файл вручную: $path" -ForegroundColor Red }
 }
+
+$hitTotal = @($report | Where-Object { $_ -match '^\s+(ПОДОЗРИТЕЛЬНО|ВНИМАНИЕ|Имя файла|Внутри|\()' }).Count
+if ($hitTotal -gt 0) {
+    $Global:AkilyaStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 90, 90)
+    $Global:AkilyaStatus.Text = "Готово: найдено совпадений — $hitTotal"
+} else {
+    $Global:AkilyaStatus.ForeColor = [System.Drawing.Color]::FromArgb(90, 220, 130)
+    $Global:AkilyaStatus.Text = "Готово: совпадений не найдено"
+}
+$Global:AkilyaBar.Value = 100
+$Global:AkilyaForm.Refresh()
+[System.Windows.Forms.Application]::DoEvents()
+Start-Sleep -Seconds 4
+$Global:AkilyaForm.Close()
 
 
 # ---------- Запуск Everything 1.5a и JournalTrace ----------
