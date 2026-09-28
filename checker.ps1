@@ -13,7 +13,11 @@ $PasswordHash = "a862e4faf907500b42d12feea180f9dd194e80a7e3ac6b2bdc72b9dbbde2784
 $Keywords = @(
     "killaura","aimassist","autoclicker","triggerbot","reach","velocity","scaffold",
     "esp","xray","fly","nofall","bhop","wurst","meteor","impact","liquidbounce",
-    "vape","rise","novoline","astolfo","akrien","celestial","expensive","nursultan","wexside"
+    "vape","rise","novoline","astolfo","akrien","celestial","expensive","nursultan","wexside",
+    "systemdlc","system-dlc","doomsday","aristois","sigma","wolfram","future","rusherhack",
+    "huzuni","salhack","kamiblue","inertia","pyro","wolfvorlem","kiiro","needle","moon",
+    "nofx","aristois2","cinnamon","anarchy","pandora","onehandclick","jigsaw","blatant",
+    "watermark","injection","injector","loader","cracked","cheatclient","cheatgui","hvh"
 )
 # ---------------------------------
 
@@ -41,8 +45,57 @@ if (-not $isAdmin) { Write-Host "Запусти PowerShell от имени ад�
 Write-Host "`nПроверка #$Code. Скрипт просматривает: папку .minecraft, Prefetch, Recent, запущенные процессы." -ForegroundColor Cyan
 Write-Host "Файлы не изменяются и не удаляются. Отчёт сохраняется на рабочий стол." -ForegroundColor Cyan
 if ($WebhookUrl) { Write-Host "Отчёт будет отправлен модератору." -ForegroundColor Yellow }
-Write-Host "Запуск через 5 секунд. Закрой окно, чтобы отменить." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
+function Show-Banner {
+    Clear-Host
+    try { $Host.UI.RawUI.WindowTitle = "AKILYA | Screenshare Checker" } catch {}
+    $w = 62
+    Write-Host ""
+    Write-Host ("=" * $w) -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "   █████╗ ██╗  ██╗██╗██╗     ██╗   ██╗ █████╗ " -ForegroundColor Cyan
+    Write-Host "  ██╔══██╗██║ ██╔╝██║██║     ╚██╗ ██╔╝██╔══██╗" -ForegroundColor Cyan
+    Write-Host "  ███████║█████╔╝ ██║██║      ╚████╔╝ ███████║" -ForegroundColor White
+    Write-Host "  ██╔══██║██╔═██╗ ██║██║       ╚██╔╝  ██╔══██║" -ForegroundColor White
+    Write-Host "  ██║  ██║██║  ██╗██║███████╗   ██║   ██║  ██║" -ForegroundColor Cyan
+    Write-Host "  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host ("            SCREENSHARE CHECKER  •  v1.0") -ForegroundColor Gray
+    Write-Host ("=" * $w) -ForegroundColor DarkCyan
+    Write-Host ""
+}
+
+function Show-Spinner($seconds, $label) {
+    $frames = @("|","/","-","\")
+    $dotsMax = 3
+    $end = (Get-Date).AddSeconds($seconds)
+    $i = 0
+    while ((Get-Date) -lt $end) {
+        $dots = "." * (($i % $dotsMax) + 1)
+        $pad  = " " * ($dotsMax - (($i % $dotsMax) + 1))
+        Write-Host ("`r  [{0}] {1}{2}{3}" -f $frames[$i % 4], $label, $dots, $pad) -NoNewline -ForegroundColor Cyan
+        Start-Sleep -Milliseconds 150
+        $i++
+    }
+    Write-Host ("`r" + (" " * 70) + "`r") -NoNewline
+}
+
+function Show-Progress($percent, $label) {
+    $width = 40
+    $filled = [int]($width * $percent / 100)
+    $bar = ("#" * $filled) + ("." * ($width - $filled))
+    $color = if ($percent -lt 100) { "Cyan" } else { "Green" }
+    Write-Host ("`r  [{0}] {1,3}%  {2}" -f $bar, $percent, $label.PadRight(30)) -NoNewline -ForegroundColor $color
+    if ($percent -eq 100) { Write-Host "" }
+}
+
+Show-Banner
+Write-Host "  Код проверки : $Code" -ForegroundColor White
+Write-Host "  Игрок        : $env:USERNAME" -ForegroundColor White
+Write-Host "  Внимание: проверяются папка .minecraft, Prefetch, Recent," -ForegroundColor Yellow
+Write-Host "  запущенные процессы и все диски. Отчёт уйдёт модератору." -ForegroundColor Yellow
+Write-Host ""
+Show-Spinner 5 "Инициализация проверки"
+Write-Host ""
 
 Log "=== ОТЧЁТ | Код: $Code | Игрок: $env:USERNAME | ПК: $env:COMPUTERNAME | $(Get-Date) ==="
 
@@ -53,6 +106,7 @@ function Match-Keyword($text) {
 }
 
 # 4. Запущенные процессы
+Show-Progress 10 "Проверка процессов"
 Log "`n[1] Процессы"
 Get-CimInstance Win32_Process | ForEach-Object {
     $line = "$($_.Name) $($_.CommandLine)"
@@ -67,6 +121,7 @@ foreach ($j in $java) {
 }
 
 # 5. Содержимое .minecraft (jar-файлы)
+Show-Progress 25 "Проверка .minecraft"
 Log "`n[2] Файлы .jar в .minecraft"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $mc = Join-Path $env:APPDATA ".minecraft"
@@ -82,6 +137,7 @@ Get-ChildItem $mc -Recurse -Include *.jar -ErrorAction SilentlyContinue | ForEac
 }
 
 # 6. Prefetch (следы запуска программ)
+Show-Progress 40 "Проверка Prefetch"
 Log "`n[3] Prefetch (за последние 7 дней)"
 Get-ChildItem "C:\Windows\Prefetch\*.pf" | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) } |
     ForEach-Object {
@@ -90,6 +146,7 @@ Get-ChildItem "C:\Windows\Prefetch\*.pf" | Where-Object { $_.LastWriteTime -gt (
     }
 
 # 7. Recent (недавние файлы)
+Show-Progress 50 "Проверка недавних файлов"
 Log "`n[4] Недавние файлы"
 Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" -Filter *.lnk | ForEach-Object {
     $m = Match-Keyword $_.Name
@@ -97,6 +154,7 @@ Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" -Filter *.lnk | ForEach-Ob
 }
 
 # 8. Загрузки и рабочий стол
+Show-Progress 60 "Проверка загрузок и рабочего стола"
 Log "`n[5] Загрузки / Рабочий стол"
 foreach ($dir in @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop")) {
     Get-ChildItem $dir -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
@@ -106,6 +164,7 @@ foreach ($dir in @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop")) {
 }
 
 # 9. Инжекты: подозрительные модули в процессах Java
+Show-Progress 70 "Проверка инжектов в Java"
 Log "`n[6] Модули в javaw/java (неподписанные DLL вне системных папок)"
 $skipName = '^(lwjgl|jna|glfw|OpenAL|jemalloc|zstd|opus|tinyfd|freetype|sqlite)'
 foreach ($p in (Get-Process javaw, java -ErrorAction SilentlyContinue)) {
@@ -127,6 +186,7 @@ foreach ($p in (Get-Process javaw, java -ErrorAction SilentlyContinue)) {
 }
 
 # 10. Полное сканирование дисков по именам файлов
+Show-Progress 80 "Сканирование всех дисков"
 Log "`n[7] Все диски: файлы с подозрительными именами"
 $exts = @("*.jar", "*.exe", "*.dll", "*.zip", "*.rar", "*.7z", "*.bat", "*.ps1", "*.cfg", "*.json")
 $skipPath = '\\(Windows|Program Files|Program Files \(x86\)|ProgramData\\Microsoft|\$Recycle\.Bin|System Volume Information)\\'
@@ -140,6 +200,8 @@ foreach ($drive in (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root 
         }
 }
 
+Show-Progress 100 "Готово"
+Write-Host ""
 Log "`n=== Проверка завершена ==="
 
 # Сохранение отчёта
@@ -167,16 +229,28 @@ if ($WebhookUrl) {
         })
     } | ConvertTo-Json -Depth 6 -Compress
 
-    $tmp = Join-Path $env:TEMP "payload_$Code.json"
+    $tmp  = Join-Path $env:TEMP "payload_$Code.json"
+    $resp = Join-Path $env:TEMP "resp_$Code.txt"
     [IO.File]::WriteAllText($tmp, $payload, (New-Object Text.UTF8Encoding $false))
 
-    # curl.exe есть в Windows 10/11; отправляет embed + файл отчёта вложением
-    curl.exe -s -X POST -F "payload_json=<$tmp" -F "file=@$path" $WebhookUrl | Out-Null
-    Remove-Item $tmp -Force
+    $sent = $false
+    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+        # -w выводит HTTP-код, чтобы видеть реальный результат отправки
+        $http = curl.exe -s -o $resp -w "%{http_code}" -X POST -F "payload_json=<$tmp" -F "file=@$path" $WebhookUrl
+        Write-Host "Discord ответил кодом: $http" -ForegroundColor DarkGray
+        if ($http -match '^2\d\d$') { $sent = $true }
+        else { Write-Host "Ответ Discord: $(Get-Content $resp -Raw)" -ForegroundColor Yellow }
+    } else {
+        Write-Host "curl.exe не найден, отправляю без файла." -ForegroundColor Yellow
+        try { Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType "application/json; charset=utf-8" -Body $payload | Out-Null; $sent = $true }
+        catch { Write-Host "Ошибка отправки: $($_.Exception.Message)" -ForegroundColor Yellow }
+    }
+    Remove-Item $tmp, $resp -Force -ErrorAction SilentlyContinue
 
-    if ($LASTEXITCODE -eq 0) { Write-Host "Отчёт отправлен модератору." -ForegroundColor Green }
-    else { Write-Host "Не удалось отправить отчёт. Покажи файл вручную: $path" -ForegroundColor Yellow }
+    if ($sent) { Write-Host "Отчёт отправлен модератору." -ForegroundColor Green }
+    else { Write-Host "Не удалось отправить отчёт. Покажи файл вручную: $path" -ForegroundColor Red }
 }
+
 
 # ---------- Запуск Everything 1.5a и JournalTrace ----------
 function Get-Tool($url, $pattern) {
